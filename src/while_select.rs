@@ -1,3 +1,23 @@
+/*
+ *  Copyright 2026 Michael Bachmann
+ *
+ * Licensed under either the MIT or the Apache License, Version 2.0,
+ * as per the user's preference.
+ * You may not use this file except in compliance with at least one
+ * of these two licenses.
+ * You may obtain a copy of the Licenses at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *     and
+ *     https://opensource.org/license/MIT
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 /// Runs a [`tokio::select!`] in a loop until one of its branches decides to
 /// stop, then evaluates to the value that branch produced.
 ///
