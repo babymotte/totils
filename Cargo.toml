@@ -1,6 +1,6 @@
 [package]
 name = "totils"
-version = "1.2.0"
+version = "1.3.0"
 edition = "2024"
 authors = ["Michael Bachmann <mbachmann@bbmsoft.net>"]
 description = "Re-usable patterns for tokio based async applications."
