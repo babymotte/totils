@@ -18,6 +18,8 @@
  * limitations under the License.
  */
 
+use std::ops::ControlFlow;
+
 /// Runs a [`tokio::select!`] in a loop until one of its branches decides to
 /// stop, then evaluates to the value that branch produced.
 ///
@@ -70,21 +72,107 @@
 #[macro_export]
 macro_rules! while_select {
     (biased; $($tokens:tt)*) => {
+        $crate::while_select!(@munch [biased;] $($tokens)*)
+    };
+
+    // all branches consumed: emit the loop
+    (@munch [$($acc:tt)*]) => {
         '__while_select: loop {
-            match ::tokio::select! { biased; $($tokens)* } {
+            match ::tokio::select! { $($acc)* } {
                 ::std::ops::ControlFlow::Continue(_) => {}
                 ::std::ops::ControlFlow::Break(v) => break '__while_select v,
             }
         }
     };
+
+    // `else => handler`
+    (@munch [$($acc:tt)*] else => $h:block $(,)?) => {
+        $crate::while_select!(@munch [$($acc)* else => { $crate::__while_select_branch!($h) },])
+    };
+    (@munch [$($acc:tt)*] else => $h:expr $(,)?) => {
+        $crate::while_select!(@munch [$($acc)* else => { $crate::__while_select_branch!($h) },])
+    };
+
+    // `pattern = future, if precondition => handler`
+    (@munch [$($acc:tt)*] $p:pat = $f:expr, if $c:expr => $h:block, $($rest:tt)*) => {
+        $crate::while_select!(@munch [$($acc)* $p = $f, if $c => { $crate::__while_select_branch!($h) },] $($rest)*)
+    };
+    (@munch [$($acc:tt)*] $p:pat = $f:expr, if $c:expr => $h:block $($rest:tt)*) => {
+        $crate::while_select!(@munch [$($acc)* $p = $f, if $c => { $crate::__while_select_branch!($h) },] $($rest)*)
+    };
+    (@munch [$($acc:tt)*] $p:pat = $f:expr, if $c:expr => $h:expr $(, $($rest:tt)*)?) => {
+        $crate::while_select!(@munch [$($acc)* $p = $f, if $c => { $crate::__while_select_branch!($h) },] $($($rest)*)?)
+    };
+
+    // `pattern = future => handler`
+    (@munch [$($acc:tt)*] $p:pat = $f:expr => $h:block, $($rest:tt)*) => {
+        $crate::while_select!(@munch [$($acc)* $p = $f => { $crate::__while_select_branch!($h) },] $($rest)*)
+    };
+    (@munch [$($acc:tt)*] $p:pat = $f:expr => $h:block $($rest:tt)*) => {
+        $crate::while_select!(@munch [$($acc)* $p = $f => { $crate::__while_select_branch!($h) },] $($rest)*)
+    };
+    (@munch [$($acc:tt)*] $p:pat = $f:expr => $h:expr $(, $($rest:tt)*)?) => {
+        $crate::while_select!(@munch [$($acc)* $p = $f => { $crate::__while_select_branch!($h) },] $($($rest)*)?)
+    };
+
     ($($tokens:tt)*) => {
-        '__while_select: loop {
-            match ::tokio::select! { $($tokens)* } {
-                ::std::ops::ControlFlow::Continue(_) => {}
-                ::std::ops::ControlFlow::Break(v) => break '__while_select v,
-            }
-        }
+        $crate::while_select!(@munch [] $($tokens)*)
     };
+}
+
+/// Converts a single `while_select!` branch handler into a [`ControlFlow`].
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __while_select_branch {
+    ($h:expr) => {{
+        #[allow(unreachable_code)]
+        $crate::while_select::IntoControlFlow::into_control_flow($h)
+    }};
+}
+
+pub trait IntoControlFlow<T> {
+    fn into_control_flow(self) -> ControlFlow<T>;
+}
+
+impl<T> IntoControlFlow<T> for ControlFlow<T> {
+    fn into_control_flow(self) -> ControlFlow<T> {
+        self
+    }
+}
+
+impl<T> IntoControlFlow<T> for () {
+    fn into_control_flow(self) -> ControlFlow<T> {
+        ControlFlow::Continue(())
+    }
+}
+
+// Handlers that diverge (e.g. `break 'label v` or `return`) have type `!`.
+// The never type can't be named on stable, but it can be reached through
+// the return type of a function pointer.
+#[doc(hidden)]
+pub trait FnOutput {
+    type Output;
+}
+
+impl<T> FnOutput for fn() -> T {
+    type Output = T;
+}
+
+type Never = <fn() -> ! as FnOutput>::Output;
+
+impl<T> IntoControlFlow<T> for Never {
+    fn into_control_flow(self) -> ControlFlow<T> {
+        self
+    }
+}
+
+impl<E> IntoControlFlow<Result<(), E>> for Result<(), E> {
+    fn into_control_flow(self) -> ControlFlow<Result<(), E>> {
+        match self {
+            Ok(_) => ControlFlow::Continue(()),
+            Err(e) => ControlFlow::Break(Err(e)),
+        }
+    }
 }
 
 #[cfg(test)]
