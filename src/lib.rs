@@ -47,6 +47,34 @@ impl<T> ReceiveOrCancelOn for tokio::sync::oneshot::Receiver<T> {
     type Output = T;
 
     async fn recv_or_cancel_on(&mut self, cancel: impl Future) -> Option<Self::Output> {
-        self.or_cancel_on(cancel).await.and_then(|it| it.ok())
+        self.or_cancel_on(cancel).await.untangle_ok()
+    }
+}
+
+pub trait Untangle {
+    type Output;
+    fn untangle(self) -> Self::Output;
+}
+
+impl<T, E> Untangle for Option<Result<T, E>> {
+    type Output = Result<Option<T>, E>;
+    fn untangle(self) -> Self::Output {
+        match self {
+            Some(Ok(value)) => Ok(Some(value)),
+            Some(Err(err)) => Err(err),
+            None => Ok(None),
+        }
+    }
+}
+
+pub trait UntangleOk {
+    type Output;
+    fn untangle_ok(self) -> Self::Output;
+}
+
+impl<T, E> UntangleOk for Option<Result<T, E>> {
+    type Output = Option<T>;
+    fn untangle_ok(self) -> Self::Output {
+        self.and_then(|res| res.ok())
     }
 }
